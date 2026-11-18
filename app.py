@@ -1,7 +1,4 @@
-# Dashboard for the batch distillation data.
-# Question 1: how do sensor readings change when an anomaly occurs?
-# Run with: streamlit run app.py
-
+# dashboard for the batch distillation data
 import os
 
 import pandas as pd
@@ -20,7 +17,7 @@ st.set_page_config(page_title="Anomalies in Batch Distillation", layout="wide")
 def load_run(path):
     df = pd.read_csv(path)
     df["offset"] = pd.to_timedelta(df["Time"])
-    # plotly draws a nicer time axis with real timestamps, so add a dummy date
+    # dummy date for the axis
     df["clock"] = pd.Timestamp("2000-01-01") + df["offset"]
     return df
 
@@ -48,7 +45,7 @@ events = events[events["no_category"] == False]
 
 sd = normal[sensor].std()
 
-# how much of the run is inside an annotated anomaly
+# how much is inside an anomaly
 inside = pd.Series(False, index=anomalous.index)
 for _, event in events.iterrows():
     inside = inside | anomalous["offset"].between(event["start"], event["end"])
@@ -59,8 +56,7 @@ col2.metric("Time intervals", len(events))
 col3.metric("Share of run", str(round(100 * inside.mean())) + " %")
 
 
-# first chart - the anomalous run with the anomalies shaded
-
+# chart 1
 st.subheader("Before, during and after the anomalies")
 
 fig1 = go.Figure()
@@ -78,8 +74,7 @@ st.plotly_chart(fig1, width="stretch")
 st.write("The shaded parts are the annotated anomalies.")
 
 
-# second chart - the same sensor in the normal run and the anomalous run
-
+# chart 2
 st.subheader("Compared with the normal run")
 
 fig2 = go.Figure()
@@ -95,14 +90,13 @@ st.write("Both runs start at zero. If the two lines stay apart the whole time, "
          "the difference is not only caused by the anomalies.")
 
 
-# table - what the sensor does around each anomaly
-
+# table
 st.subheader("What " + sensor + " does during each anomaly")
 
 if len(events) == 0:
     st.write("There are no annotated anomalies at this operating point.")
 else:
-    context = pd.Timedelta(str(CONTEXT_MINUTES) + "min")
+    context = pd.Timedelta(minutes=CONTEXT_MINUTES)
     rows = []
 
     for event_id, group in events.groupby("event_id"):
