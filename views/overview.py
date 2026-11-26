@@ -1,7 +1,6 @@
 # Overview page. Everything starts here, the cards link to the other pages.
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 import plant
 from anomaly_annotations import OPS, SENSOR_LABELS
@@ -35,22 +34,43 @@ cards[2].caption("confirmed + unconfirmed, in "
 # the process
 
 st.subheader("The process", icon=":material/account_tree:")
-st.write("Pick a part of the plant to highlight it and see which sensors sit there. "
-         "Turn on the disturbances to see where they were applied.")
+st.write("Click a unit or a sensor in the diagram to see what it is. Turn on the "
+         "disturbances to see where they were applied.")
 
-left, right = st.columns([3, 1])
-with left:
-    choice = st.segmented_control(
-        "Part of the plant",
-        ["Whole plant"] + list(plant.UNITS.keys()),
-        default="Whole plant",
-        format_func=lambda u: u if u == "Whole plant" else plant.UNITS[u]["label"],
-        label_visibility="collapsed",
-    )
-with right:
-    show_sources = st.toggle("Show disturbances")
+# what was clicked last time, read before the chart is built so the drawing
+# comes back already highlighted
+def last_click(state):
+    """What was clicked in the diagram, as a plain string.
 
-selected = None if choice in (None, "Whole plant") else choice
+    Plotly hands customdata back either as the value itself or wrapped in a
+    one-element list, depending on version, so both are unwrapped here.
+    """
+    if not state:
+        return ""
+    selection = state.get("selection") if hasattr(state, "get") else getattr(state, "selection", None)
+    points = (selection or {}).get("points") or []
+    if not points:
+        return ""
+    value = points[-1].get("customdata", "")
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    return str(value)
+
+
+# The pick is kept in a key of our own rather than read back from the chart.
+# The figure changes whenever the highlight changes, and streamlit treats that
+# as a new widget and drops the chart's own selection, which would make the
+# panel vanish on the next rerun.
+picked = st.session_state.get("plant_pick", "")
+selected_unit = picked[5:] if picked.startswith("unit:") else None
+selected_sensor = picked[7:] if picked.startswith("sensor:") else None
+
+controls = st.columns([1, 1, 2])
+show_sources = controls[0].toggle("Show disturbances")
+if controls[1].button("Show whole plant", width="stretch"):
+    st.session_state.pop("plant_pick", None)
+    st.session_state.pop("plant", None)
+    st.rerun()
 
 marked = []
 if show_sources:
@@ -62,11 +82,43 @@ if show_sources:
 diagram, detail = st.columns([2, 1])
 
 with diagram:
-    components.html(plant.page(selected, marked), height=plant.FRAME_HEIGHT + 10)
+    event = st.plotly_chart(plant.figure(selected_unit, selected_sensor, marked),
+                            key="plant", on_select="rerun", selection_mode="points",
+                            config={"displayModeBar": False}, width="stretch")
+
+clicked = last_click(event)
+if clicked and clicked != picked:
+    st.session_state["plant_pick"] = clicked
+    st.rerun()
 
 with detail:
-    if selected:
-        unit = plant.UNITS[selected]
+    if selected_sensor:
+        unit_id = plant.sensor_unit(selected_sensor)
+        st.markdown("**" + selected_sensor + "**")
+        st.write(SENSOR_LABELS[selected_sensor])
+        if unit_id:
+            st.caption("Sits on " + plant.UNITS[unit_id]["label"] + " - "
+                       + plant.UNITS[unit_id]["name"])
+
+        named = events[events["confirmed"] & events["sensors"].str.contains(
+            selected_sensor, regex=False)]
+        if len(named):
+            where = named.drop_duplicates("event_id")
+            st.markdown("**Named in " + str(len(where)) + " annotated anomal"
+                        + ("y" if len(where) == 1 else "ies") + "**")
+            for _, row in where.iterrows():
+                st.write(row["op"] + ": " + row["category"] + ", "
+                         + str(round(row["duration_s"] / 60, 1)) + " min")
+        else:
+            st.caption("No annotated anomaly names this sensor.")
+
+        if st.button("See it over a run", icon=":material/show_chart:",
+                     width="stretch"):
+            st.session_state["jump_sensor"] = selected_sensor
+            st.switch_page("views/timeseries.py")
+
+    elif selected_unit:
+        unit = plant.UNITS[selected_unit]
         st.markdown("**" + unit["label"] + " - " + unit["name"] + "**")
         st.write(unit["note"])
         st.markdown("**Sensors here**")
@@ -75,7 +127,7 @@ with detail:
 
         touched = events[events["confirmed"]].copy()
         touched = touched[touched["source_ids"].apply(
-            lambda value: selected in plant.disturbance_units(
+            lambda value: selected_unit in plant.disturbance_units(
                 [s.strip() for s in value.split(",") if s.strip()]))]
         if len(touched):
             st.markdown("**Disturbances applied here**")

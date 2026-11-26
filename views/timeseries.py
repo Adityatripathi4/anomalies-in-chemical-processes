@@ -14,6 +14,9 @@ if data_missing():
     st.error("Could not find the folder batch_distillation_dataset next to app.py.")
     st.stop()
 
+if "jump_sensor" in st.session_state:
+    st.session_state["sensor"] = st.session_state.pop("jump_sensor")
+
 if st.button("Back to overview"):
     st.switch_page("views/overview.py")
 

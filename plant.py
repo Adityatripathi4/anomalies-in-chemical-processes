@@ -88,157 +88,205 @@ def disturbance_units(source_ids):
     return units
 
 
-def chip(x, y, text, colour, anchor="middle"):
-    """A small rounded label for a sensor."""
-    w = 52
-    left = x - w / 2 if anchor == "middle" else (x - w if anchor == "end" else x)
-    return (f'<rect x="{left}" y="{y - 10}" width="{w}" height="15" rx="7.5" '
-            f'fill="none" stroke="{colour}" stroke-width="1"/>'
-            f'<text x="{left + w / 2}" y="{y + 0.5}" fill="{colour}" font-size="9.5" '
-            f'text-anchor="middle" letter-spacing="0.3">{text}</text>')
 
 
+# ----------------------------------------------------------------- drawing
+# The plant is drawn as a plotly figure rather than an svg, so that clicking
+# a unit or a sensor is an ordinary streamlit event. Everything is placed in
+# the coordinate system above, with y growing downwards, and the y axis is
+# reversed to match.
 
-def symbol(kind, x, y, colour):
-    """A small equipment symbol, drawn in a 26 by 26 box with its top-left at x, y."""
-    o = []
+import plotly.graph_objects as go
+
+from anomaly_annotations import SENSOR_LABELS
+
+CHIP_W, CHIP_H = 52, 16
+
+
+def rounded(x, y, w, h, r):
+    """An svg path for a rounded rectangle, which plotly accepts as a shape."""
+    return (f"M {x + r},{y} L {x + w - r},{y} Q {x + w},{y} {x + w},{y + r} "
+            f"L {x + w},{y + h - r} Q {x + w},{y + h} {x + w - r},{y + h} "
+            f"L {x + r},{y + h} Q {x},{y + h} {x},{y + h - r} "
+            f"L {x},{y + r} Q {x},{y} {x + r},{y} Z")
+
+
+def symbol_shapes(kind, x, y, colour):
+    """The little equipment symbol, as plotly shapes."""
+    line = dict(color=colour, width=1.4)
     if kind == "pump":
-        o.append(f'<circle cx="{x + 13}" cy="{y + 13}" r="10" fill="none" '
-                 f'stroke="{colour}" stroke-width="1.4"/>')
-        o.append(f'<path d="M{x + 9},{y + 7} L{x + 20},{y + 13} L{x + 9},{y + 19} z" '
-                 f'fill="none" stroke="{colour}" stroke-width="1.4" '
-                 f'stroke-linejoin="round"/>')
-    elif kind == "exchanger":
-        o.append(f'<rect x="{x + 2}" y="{y + 4}" width="22" height="18" rx="3" '
-                 f'fill="none" stroke="{colour}" stroke-width="1.4"/>')
-        o.append(f'<path d="M{x + 5},{y + 13} L{x + 9},{y + 7} L{x + 13},{y + 19} '
-                 f'L{x + 17},{y + 7} L{x + 21},{y + 13}" fill="none" '
-                 f'stroke="{colour}" stroke-width="1.4" stroke-linejoin="round"/>')
-    elif kind == "vessel":
-        o.append(f'<rect x="{x + 5}" y="{y + 3}" width="16" height="20" rx="7" '
-                 f'fill="none" stroke="{colour}" stroke-width="1.4"/>')
-        o.append(f'<path d="M{x + 5},{y + 15} q4,-4 8,0 q4,4 8,0" fill="none" '
-                 f'stroke="{colour}" stroke-width="1.3"/>')
-    elif kind == "heater":
-        o.append(f'<rect x="{x + 4}" y="{y + 4}" width="18" height="18" rx="4" '
-                 f'fill="none" stroke="{colour}" stroke-width="1.4"/>')
-        o.append(f'<path d="M{x + 8},{y + 19} L{x + 8},{y + 11} L{x + 13},{y + 11} '
-                 f'L{x + 13},{y + 19} L{x + 18},{y + 19} L{x + 18},{y + 11}" '
-                 f'fill="none" stroke="{colour}" stroke-width="1.4" '
-                 f'stroke-linejoin="round"/>')
-    elif kind == "gauge":
-        o.append(f'<circle cx="{x + 13}" cy="{y + 13}" r="10" fill="none" '
-                 f'stroke="{colour}" stroke-width="1.4"/>')
-        o.append(f'<line x1="{x + 13}" y1="{y + 13}" x2="{x + 19}" y2="{y + 7}" '
-                 f'stroke="{colour}" stroke-width="1.4" stroke-linecap="round"/>')
-        o.append(f'<circle cx="{x + 13}" cy="{y + 13}" r="1.6" fill="{colour}"/>')
-    return "".join(o)
+        return [dict(type="circle", x0=x + 3, y0=y + 3, x1=x + 23, y1=y + 23, line=line),
+                dict(type="path", path=f"M {x + 9},{y + 7} L {x + 20},{y + 13} "
+                                       f"L {x + 9},{y + 19} Z", line=line)]
+    if kind == "exchanger":
+        return [dict(type="rect", x0=x + 2, y0=y + 4, x1=x + 24, y1=y + 22, line=line),
+                dict(type="path", path=f"M {x + 5},{y + 13} L {x + 9},{y + 7} "
+                                       f"L {x + 13},{y + 19} L {x + 17},{y + 7} "
+                                       f"L {x + 21},{y + 13}", line=line)]
+    if kind == "vessel":
+        return [dict(type="path", path=rounded(x + 5, y + 3, 16, 20, 7), line=line),
+                dict(type="path", path=f"M {x + 5},{y + 15} Q {x + 9},{y + 11} "
+                                       f"{x + 13},{y + 15} Q {x + 17},{y + 19} "
+                                       f"{x + 21},{y + 15}", line=line)]
+    if kind == "heater":
+        return [dict(type="path", path=rounded(x + 4, y + 4, 18, 18, 4), line=line),
+                dict(type="path", path=f"M {x + 8},{y + 19} L {x + 8},{y + 11} "
+                                       f"L {x + 13},{y + 11} L {x + 13},{y + 19} "
+                                       f"L {x + 18},{y + 19} L {x + 18},{y + 11}",
+                     line=line)]
+    if kind == "gauge":
+        return [dict(type="circle", x0=x + 3, y0=y + 3, x1=x + 23, y1=y + 23, line=line),
+                dict(type="line", x0=x + 13, y0=y + 13, x1=x + 19, y1=y + 7, line=line),
+                dict(type="circle", x0=x + 11.4, y0=y + 11.4, x1=x + 14.6, y1=y + 14.6,
+                     line=dict(color=colour, width=1), fillcolor=colour)]
+    return []
 
 
-def draw(selected=None, marked=()):
-    """The plant as SVG. selected is highlighted, units in marked get a dot."""
-    out = [f'<svg viewBox="0 0 {WIDTH} {HEIGHT}" xmlns="http://www.w3.org/2000/svg" '
-           'preserveAspectRatio="xMidYMid meet" '
-           'style="width:100%;height:100%;display:block;'
-           'font-family:system-ui,-apple-system,sans-serif">',
-           f'<defs><marker id="arw" markerWidth="8" markerHeight="8" refX="7" refY="3" '
-           f'orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="{EDGE}"/></marker></defs>']
+def chip_positions(unit_id):
+    """Where this unit's sensor chips sit, in order."""
+    unit = UNITS[unit_id]
+    places = []
+    if "band" in unit:
+        top, bottom = BANDS[unit["band"]]
+        y = (top + bottom) / 2 - 9
+        for _ in unit["sensors"]:
+            places.append((COLUMN_X - 14 - CHIP_W, y - 4))
+            y += 21
+    else:
+        x, y, w, h = unit["box"]
+        start = x + w / 2 - (len(unit["sensors"]) * 58 - 6) / 2 + 26
+        for _ in unit["sensors"]:
+            places.append((start, y + h - 24))
+            start += 58
+    return places
 
-    # pipes first, so the vessels sit on top of them
+
+def figure(selected_unit=None, selected_sensor=None, marked=()):
+    """The plant, ready for st.plotly_chart with on_select."""
+    shapes, notes = [], []
+    click_x, click_y, click_kind, click_text = [], [], [], []
+
+    def label(x, y, text, colour, size=12, weight=None, anchor="center"):
+        notes.append(dict(x=x, y=y, text=(f"<b>{text}</b>" if weight else text),
+                          showarrow=False, font=dict(color=colour, size=size),
+                          xanchor=anchor, yanchor="middle"))
+
+    # pipes
     for stream in STREAMS:
-        points, label, at = stream[0], stream[1], stream[2]
-        anchor = stream[3] if len(stream) > 3 else "start"
-        path = " ".join(f"{x},{y}" for x, y in points)
-        out.append(f'<polyline points="{path}" fill="none" stroke="{EDGE}" '
-                   f'stroke-width="2" stroke-linejoin="round" marker-end="url(#arw)"/>')
-        if label:
-            out.append(f'<text x="{at[0]}" y="{at[1]}" fill="{MUTED}" font-size="12" '
-                       f'text-anchor="{anchor}">{label}</text>')
+        points, name, at = stream[0], stream[1], stream[2]
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            shapes.append(dict(type="line", x0=x0, y0=y0, x1=x1, y1=y1,
+                               line=dict(color=EDGE, width=2), layer="below"))
+        # an arrowhead on the last segment, so flow direction still reads
+        (tail_x, tail_y), (head_x, head_y) = points[-2], points[-1]
+        notes.append(dict(x=head_x, y=head_y, ax=tail_x, ay=tail_y,
+                          xref="x", yref="y", axref="x", ayref="y",
+                          text="", showarrow=True, arrowhead=2, arrowsize=1.2,
+                          arrowwidth=2, arrowcolor=EDGE))
+        if name:
+            label(at[0], at[1], name, MUTED, 11, anchor="left")
 
-    # the column: one vessel, three bands
-    out.append(f'<rect x="{COLUMN_X}" y="60" width="{COLUMN_W}" height="240" rx="10" '
-               f'fill="{BASE}" stroke="{EDGE}" stroke-width="1.5"/>')
+    def draw_chips(unit_id, on):
+        for (cx, cy), sensor in zip(chip_positions(unit_id), UNITS[unit_id]["sensors"]):
+            picked = sensor == selected_sensor
+            colour = ACCENT if (on or picked) else MUTED
+            shapes.append(dict(type="path", path=rounded(cx, cy, CHIP_W, CHIP_H, 8),
+                               line=dict(color=colour, width=2 if picked else 1),
+                               fillcolor=GLOW if picked else "rgba(0,0,0,0)"))
+            if "band" in UNITS[unit_id]:
+                shapes.append(dict(type="line", x0=cx + CHIP_W, y0=cy + CHIP_H / 2,
+                                   x1=COLUMN_X, y1=cy + CHIP_H / 2,
+                                   line=dict(color=colour, width=1), layer="below"))
+            label(cx + CHIP_W / 2, cy + CHIP_H / 2, sensor, colour, 9.5)
+            click_x.append(cx + CHIP_W / 2)
+            click_y.append(cy + CHIP_H / 2)
+            click_kind.append("sensor:" + sensor)
+            click_text.append(sensor + " - " + SENSOR_LABELS[sensor])
+
+    # the column, as one vessel with three bands
+    shapes.append(dict(type="path", path=rounded(COLUMN_X, 60, COLUMN_W, 240, 10),
+                       line=dict(color=EDGE, width=1.5), fillcolor=BASE, layer="below"))
 
     for band_id, (top, bottom) in BANDS.items():
-        on = band_id == selected
+        on = band_id == selected_unit
         unit = UNITS[band_id]
         if on:
-            out.append(f'<rect x="{COLUMN_X + 1.5}" y="{top + (1.5 if top == 60 else 0)}" '
-                       f'width="{COLUMN_W - 3}" height="{bottom - top - (1.5 if top == 60 else 0)}" '
-                       f'rx="{8 if top == 60 else 0}" fill="{GLOW}" stroke="{ACCENT}" '
-                       f'stroke-width="2"/>')
+            shapes.append(dict(type="path",
+                               path=rounded(COLUMN_X + 2, top + 1, COLUMN_W - 4,
+                                            bottom - top - 2, 8),
+                               line=dict(color=ACCENT, width=2), fillcolor=GLOW))
         if top != 60:
-            out.append(f'<line x1="{COLUMN_X}" y1="{top}" x2="{COLUMN_X + COLUMN_W}" '
-                       f'y2="{top}" stroke="{EDGE}" stroke-width="1"/>')
-
-        tray_colour = ACCENT if on else EDGE
+            shapes.append(dict(type="line", x0=COLUMN_X, y0=top, x1=COLUMN_X + COLUMN_W,
+                               y1=top, line=dict(color=EDGE, width=1)))
         for k in range(1, 4):
-            tray_y = top + k * (bottom - top) / 4
-            out.append(f'<line x1="{COLUMN_X + 18}" y1="{tray_y}" '
-                       f'x2="{COLUMN_X + COLUMN_W - 18}" y2="{tray_y}" '
-                       f'stroke="{tray_colour}" stroke-width="1" opacity="0.45"/>')
+            tray = top + k * (bottom - top) / 4
+            shapes.append(dict(type="line", x0=COLUMN_X + 18, y0=tray,
+                               x1=COLUMN_X + COLUMN_W - 18, y1=tray,
+                               line=dict(color=ACCENT if on else EDGE, width=1),
+                               opacity=0.45, layer="below"))
 
         middle = (top + bottom) / 2
-        out.append(f'<text x="{COLUMN_X + COLUMN_W / 2}" y="{middle + 1}" '
-                   f'fill="{ACCENT if on else TEXT}" font-size="15" font-weight="600" '
-                   f'text-anchor="middle">{band_id}</text>')
-        out.append(f'<text x="{COLUMN_X + COLUMN_W / 2}" y="{middle + 17}" '
-                   f'fill="{MUTED}" font-size="9.5" text-anchor="middle">'
-                   f'{unit["name"].replace("Column section ", "section ")}</text>')
+        label(COLUMN_X + COLUMN_W / 2, middle - 6, band_id, ACCENT if on else TEXT, 14, True)
+        label(COLUMN_X + COLUMN_W / 2, middle + 9,
+              unit["name"].replace("Column section ", "section "), MUTED, 9.5)
+        draw_chips(band_id, on)
 
-        # sensors to the left of the column, with a tick into it
-        chip_y = middle - 9
-        for sensor in unit["sensors"]:
-            colour = ACCENT if on else MUTED
-            out.append(f'<line x1="{COLUMN_X - 10}" y1="{chip_y - 4}" x2="{COLUMN_X}" '
-                       f'y2="{chip_y - 4}" stroke="{colour}" stroke-width="1"/>')
-            out.append(chip(COLUMN_X - 12, chip_y, sensor, colour, anchor="end"))
-            chip_y += 21
+        click_x.append(COLUMN_X + COLUMN_W / 2)
+        click_y.append(middle - 6)
+        click_kind.append("unit:" + band_id)
+        click_text.append(band_id + " - " + unit["name"])
 
         if band_id in marked:
-            out.append(f'<circle cx="{COLUMN_X + COLUMN_W - 12}" cy="{top + 14}" '
-                       f'r="5.5" fill="{MARK}"/>')
+            shapes.append(dict(type="circle", x0=COLUMN_X + COLUMN_W - 18, y0=top + 8,
+                               x1=COLUMN_X + COLUMN_W - 6, y1=top + 20,
+                               fillcolor=MARK, line=dict(width=0)))
 
     # the boxed units
     for unit_id, unit in UNITS.items():
         if "box" not in unit:
             continue
         x, y, w, h = unit["box"]
-        on = unit_id == selected
-        out.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="10" '
-                   f'fill="{GLOW if on else BASE}" stroke="{ACCENT if on else EDGE}" '
-                   f'stroke-width="{2.5 if on else 1.5}"/>')
-
+        on = unit_id == selected_unit
+        shapes.append(dict(type="path", path=rounded(x, y, w, h, 10),
+                           line=dict(color=ACCENT if on else EDGE,
+                                     width=2.5 if on else 1.5),
+                           fillcolor=GLOW if on else BASE, layer="below"))
         if unit.get("symbol"):
-            out.append(symbol(unit["symbol"], x + 10, y + 8, ACCENT if on else MUTED))
+            shapes += symbol_shapes(unit["symbol"], x + 10, y + 8,
+                                    ACCENT if on else MUTED)
 
-        cx = x + w / 2
-        # the title sits beside the symbol rather than under it, so a long
-        # label like HE001/HE002 has room
-        text_x = x + 44 if unit.get("symbol") else cx
-        anchor = "start" if unit.get("symbol") else "middle"
-        out.append(f'<text x="{text_x}" y="{y + 27}" fill="{ACCENT if on else TEXT}" '
-                   f'font-size="15" font-weight="600" text-anchor="{anchor}">'
-                   f'{unit["label"]}</text>')
-        out.append(f'<text x="{text_x}" y="{y + 44}" fill="{MUTED}" font-size="10" '
-                   f'text-anchor="{anchor}">{unit["name"]}</text>')
+        text_x = x + 44 if unit.get("symbol") else x + w / 2
+        anchor = "left" if unit.get("symbol") else "center"
+        label(text_x, y + 22, unit["label"], ACCENT if on else TEXT, 14, True, anchor)
+        label(text_x, y + 39, unit["name"], MUTED, 10, anchor=anchor)
+        draw_chips(unit_id, on)
 
-        colour = ACCENT if on else MUTED
-        chip_x = cx - (len(unit["sensors"]) * 58 - 6) / 2 + 26
-        for sensor in unit["sensors"]:
-            out.append(chip(chip_x, y + h - 18, sensor, colour))
-            chip_x += 58
+        click_x.append(x + w / 2)
+        click_y.append(y + 22)
+        click_kind.append("unit:" + unit_id)
+        click_text.append(unit["label"] + " - " + unit["name"])
 
         if unit_id in marked:
-            out.append(f'<circle cx="{x + w - 15}" cy="{y + h - 16}" r="5.5" '
-                       f'fill="{MARK}"/>')
+            shapes.append(dict(type="circle", x0=x + w - 21, y0=y + h - 22,
+                               x1=x + w - 9, y1=y + h - 10,
+                               fillcolor=MARK, line=dict(width=0)))
 
-    out.append("</svg>")
-    return "\n".join(out)
+    fig = go.Figure()
+    # the click targets: invisible, but big enough to hit comfortably
+    fig.add_trace(go.Scatter(
+        x=click_x, y=click_y, mode="markers",
+        marker=dict(size=30, color="rgba(0,0,0,0)"),
+        customdata=click_kind, text=click_text,
+        hovertemplate="%{text}<extra></extra>", showlegend=False))
 
-
-def page(selected=None, marked=()):
-    """The drawing in a box of a fixed height, so it cannot collapse or overflow."""
-    return ('<div style="width:100%;height:' + str(FRAME_HEIGHT) + 'px;'
-            'background:transparent">' + draw(selected, marked) + "</div>")
-
+    fig.update_layout(
+        shapes=shapes, annotations=notes,
+        height=430, margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        dragmode=False, clickmode="event+select",
+        xaxis=dict(range=[0, WIDTH], visible=False, fixedrange=True,
+                   constrain="domain"),
+        yaxis=dict(range=[HEIGHT, 0], visible=False, fixedrange=True,
+                   scaleanchor="x", scaleratio=1, constrain="domain"),
+    )
+    return fig
