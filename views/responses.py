@@ -5,13 +5,13 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from annotations import OPS, SENSORS, SENSOR_LABELS
+from anomaly_annotations import OPS, SENSORS, SENSOR_LABELS
 from data import (ANOMALOUS_RUN, DAY, NORMAL_RUN, data_missing, load_events,
                   load_run, run_path)
 
-HIGHLIGHT = "#f08030"
-PLAIN = "#5b8ff9"
-SHADE = "#f08030"
+from palette import ANOMALY as HIGHLIGHT, CHART_HEIGHT, NORMAL, SIGNAL as PLAIN
+
+SHADE = HIGHLIGHT
 
 if data_missing():
     st.error("Could not find the folder batch_distillation_dataset next to app.py.")
@@ -155,7 +155,7 @@ if compare:
         shifted = same["offset"] - same["offset"].iloc[0] + window_start
         detail.add_trace(go.Scatter(x=DAY + shifted, y=same[sensor], mode="lines",
                                     name="normal run",
-                                    line=dict(color="#8899aa", width=1.2, dash="dot")))
+                                    line=dict(color=NORMAL, width=1.2, dash="dot")))
     else:
         st.caption("The normal run at this operating point is too short to cover "
                    "the same stretch.")
@@ -167,7 +167,7 @@ for _, part in events[events["event_id"] == event_id].iterrows():
 detail.add_vline(x=DAY + event["start"], line_width=1, line_dash="dot", line_color=SHADE)
 detail.add_vline(x=DAY + event["end"], line_width=1, line_dash="dot", line_color=SHADE)
 
-detail.update_layout(height=420, margin=dict(l=10, r=10, t=20, b=10),
+detail.update_layout(height=CHART_HEIGHT + 40, margin=dict(l=10, r=10, t=20, b=10),
                      xaxis_title="Recording time", yaxis_title=sensor,
                      hovermode="x unified",
                      legend=dict(orientation="h", y=1.12, x=0))

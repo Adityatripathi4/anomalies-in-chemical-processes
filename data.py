@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from annotations import OPS, load_annotations
+from anomaly_annotations import OPS, load_annotations
 
 DATA_DIR = "batch_distillation_dataset"
 DAY = pd.Timestamp("2000-01-01")
@@ -42,17 +42,16 @@ def all_events():
 
 @st.cache_data
 def dataset_summary():
-    """Counts for the cards at the top of the overview."""
-    runs, steps, seconds = 0, 0, 0
+    """Counts for the cards at the top of the overview.
+
+    Only the anomalous runs are read, because the annotations are clipped to
+    them. The normal runs are counted from the file names, so this does not
+    walk the whole dataset.
+    """
+    runs = 0
     for op in OPS:
         folder = DATA_DIR + "/" + op + "/measurements"
-        for name in os.listdir(folder):
-            if not name.endswith(".csv"):
-                continue
-            run = load_run(folder + "/" + name)
-            runs += 1
-            steps += len(run)
-            seconds += (run["offset"].iloc[-1] - run["offset"].iloc[0]).total_seconds()
+        runs += len([n for n in os.listdir(folder) if n.endswith(".csv")])
 
     events = all_events()
     confirmed = events[events["confirmed"]]
@@ -63,8 +62,6 @@ def dataset_summary():
         "runs": runs,
         "normal_runs": runs - len(OPS),
         "anomalous_runs": len(OPS),
-        "steps": steps,
-        "hours": seconds / 3600,
         "confirmed": confirmed["event_id"].nunique(),
         "unconfirmed": unconfirmed["event_id"].nunique(),
         "intervals": len(confirmed),

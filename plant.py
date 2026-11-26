@@ -68,13 +68,7 @@ STREAMS = [
     ([(780, 296), (860, 296)], "distillate", (790, 286)),
 ]
 
-BASE = "#232832"
-EDGE = "#4e5668"
-TEXT = "#d4dae3"
-MUTED = "#828c9c"
-ACCENT = "#f08030"
-GLOW = "#3a2a1c"
-MARK = "#e05c5c"
+from palette import ACCENT, BASE, EDGE, GLOW, MARK, MUTED, TEXT
 
 
 def sensor_unit(sensor):

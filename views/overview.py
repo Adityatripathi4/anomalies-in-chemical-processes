@@ -4,7 +4,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 import plant
-from annotations import OPS, SENSOR_LABELS
+from anomaly_annotations import OPS, SENSOR_LABELS
 from data import all_events, data_missing, dataset_summary
 
 if data_missing():
@@ -21,18 +21,15 @@ events = all_events()
 
 # the numbers at the top
 
-cards = st.columns(5)
+cards = st.columns(3)
 cards[0].metric("Operating points", summary["ops"])
 cards[0].caption(", ".join(OPS))
 cards[1].metric("Runs", summary["runs"])
 cards[1].caption(str(summary["normal_runs"]) + " normal, "
-                 + str(summary["anomalous_runs"]) + " anomalous")
-cards[2].metric("Sensors", len(SENSOR_LABELS))
-cards[2].caption("temperatures, flows, pressures")
-cards[3].metric("Recording time", str(round(summary["hours"], 1)) + " h")
-cards[3].caption(format(summary["steps"], ",") + " time steps at 1 Hz")
-cards[4].metric("Anomalies", str(summary["confirmed"]) + " + " + str(summary["unconfirmed"]))
-cards[4].caption("confirmed + unconfirmed")
+                 + str(summary["anomalous_runs"]) + " anomalous, all at 1 Hz")
+cards[2].metric("Anomalies", str(summary["confirmed"]) + " + " + str(summary["unconfirmed"]))
+cards[2].caption("confirmed + unconfirmed, in "
+                 + str(summary["intervals"]) + " time intervals")
 
 
 # the process
